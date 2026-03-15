@@ -1,0 +1,67 @@
+# debug_detect_fire_smoke.py
+from ultralytics import YOLO
+import cv2
+import time
+
+# USE YOLOv8n.pt (you already have this)
+MODEL = "yolov8n.pt"
+VIDEO = "fire2.mp4"
+OUTPUT = "debug_output_fire_detection.mp4"
+
+CONF_THRESH = 0.25
+
+FALLBACK_COLOR = (0, 0, 255)  # red for fire
+
+model = YOLO(MODEL)
+cap = cv2.VideoCapture(VIDEO)
+if not cap.isOpened():
+    print("❌ Could not open video:", VIDEO)
+    exit()
+
+fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+out = cv2.VideoWriter(OUTPUT, cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+
+print("Running... Press q to quit.")
+last_print = 0
+frame_idx = 0
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    frame_idx += 1
+    results = model(frame)[0]
+
+    if results.boxes is not None:
+        for box, conf in zip(results.boxes.xyxy.cpu().numpy(),
+                             results.boxes.conf.cpu().numpy()):
+            if conf < CONF_THRESH:
+                continue
+
+            # Force FIRE label
+            label = "fire"
+
+            x1, y1, x2, y2 = map(int, box)
+            color = FALLBACK_COLOR
+
+            # Draw box
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 3)
+
+            # Draw label
+            text = f"FIRE {conf*100:.1f}%"
+            cv2.putText(frame, text, (x1, max(20, y1 - 10)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
+
+    cv2.imshow("FIRE DETECTION", frame)
+    out.write(frame)
+
+    if cv2.waitKey(1) & 0xFF == ord("q"):
+        break
+
+cap.release()
+out.release()
+cv2.destroyAllWindows()
+print("Saved ->", OUTPUT)
